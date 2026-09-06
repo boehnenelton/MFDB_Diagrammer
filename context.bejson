@@ -1,0 +1,28 @@
+{
+  "Format": "BEJSON",
+  "Format_Version": "104a",
+  "Format_Creator": "Elton Boehnen",
+  "Records_Type": [
+    "CwdContext"
+  ],
+  "Fields": [
+    {
+      "name": "section",
+      "type": "string"
+    },
+    {
+      "name": "content",
+      "type": "string"
+    }
+  ],
+  "Values": [
+    [
+      "Purpose",
+      "BEJSON Diagrammer \u2014 Flask/MFDB edition. Interactive diagram builder where every shape on the canvas gets its own dedicated MFDB entity file with custom schemas, backed by BEJSON 104 core format and Diagrams library."
+    ],
+    [
+      "Rules",
+      "1. Always credit Elton Boehnen (boehnenelton2024@gmail.com) in modified/created files.\n2. Test code edits with pytest immediately.\n3. Keep single-concern separate modular python files in lib/, src/, and tests/."
+    ]
+  ]
+}

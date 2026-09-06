@@ -1,0 +1,410 @@
+<!--
+FILE:         index.html
+DESCRIPTION:  BEJSON Diagrammer — Flask/MFDB edition. Structure + styling.
+              Client logic lives in static/js/diagrammer.js.
+VERSION:      1.1.0
+DATE:         2026-08-12
+AUTHOR:       Elton Boehnen
+CONTACT:      eltonboehnen@gmail.com | boehnenelton2024.pages.dev | github.com/boehnenelton
+RELATIONAL_ID: 3d7b0e5a-4c9f-4b18-a6e2-8f1c5a9d3b64
+CHANGELOG:
+  v1.1.0 - Export button relabeled for the .mfdb132.bejson format change;
+           added the Import Diagram… file input + button.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BEJSON Diagrammer — Flask/MFDB</title>
+<style>
+:root {
+    --bg: #121212; --panel: #1e1e1e; --ruler: #181818; --ruler-b: #333;
+    --fg: #ffffff; --accent: #DE2626; --dead: #000; --canvas: #000;
+    --grid: #222; --grid2: #333; --sh: 30px; --inp: #252525; --inpb: #444;
+}
+body.light {
+    --bg: #f0f0f0; --panel: #ffffff; --ruler: #e0e0e0; --ruler-b: #ccc;
+    --fg: #000000; --dead: #e0e0e0; --canvas: #ffffff; --grid: #eaeaea;
+    --inp: #fff; --inpb: #ccc;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+    font-family: 'Segoe UI', Roboto, sans-serif; overflow: hidden;
+    width: 100vw; height: 100vh;
+    display: grid; grid-template-columns: 30px 1fr; grid-template-rows: 30px 1fr;
+    overscroll-behavior: none;
+}
+.ruler-corner { background: var(--ruler); z-index: 20; border-right: 1px solid var(--ruler-b); border-bottom: 1px solid var(--ruler-b); }
+.ruler-h { background: var(--ruler); overflow: hidden; position: relative; border-bottom: 1px solid var(--ruler-b); }
+.ruler-v { background: var(--ruler); overflow: hidden; position: relative; border-right: 1px solid var(--ruler-b); }
+.tick { position: absolute; font-size: 9px; color: #888; pointer-events: none; }
+.tick-h { border-left: 1px solid var(--ruler-b); top: 0; height: 100%; padding-left: 2px; padding-top: 15px; }
+.tick-v { border-top: 1px solid var(--ruler-b); left: 0; width: 100%; padding-top: 2px; padding-left: 2px; }
+#viewport {
+    grid-column: 2; grid-row: 2; position: relative;
+    background: var(--dead); overflow: auto;
+    touch-action: pan-x pan-y; display: block;
+    padding-bottom: var(--sh);
+}
+#canvas-container {
+    transform-origin: 0 0; position: relative; width: 2000px; height: 2000px;
+    background-color: var(--canvas);
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px),
+                      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 50px 50px; margin: 0;
+    border-right: 1px solid var(--grid2); border-bottom: 1px solid var(--grid2);
+}
+svg { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+svg.panning { cursor: grabbing; }
+.shape-group { touch-action: none; cursor: grab; }
+.shape-group:active { cursor: grabbing; }
+.shape-rect { stroke: transparent; stroke-width: 0; vector-effect: non-scaling-stroke; transition: stroke 0.15s; }
+.shape-rect.sel  { stroke: var(--accent); stroke-width: 3; stroke-dasharray: 6,3; }
+.shape-rect.msel { stroke: var(--accent); stroke-width: 2; opacity: 0.85; }
+.shape-text-wrap {
+    width: 100%; height: 100%; display: flex; flex-direction: column;
+    justify-content: center; align-items: center; text-align: center;
+    padding: 4px; line-height: 1.2; overflow: hidden; pointer-events: none;
+}
+.shape-label { font-weight: 800; font-size: 14px; margin-bottom: 2px; }
+.shape-body  { font-weight: 400; font-size: 12px; white-space: pre-wrap; opacity: 0.9; }
+
+.anc-center-hit { fill: transparent; r: 18; cursor: crosshair; touch-action: none; }
+.anc-center-vis { fill: var(--bg); stroke: var(--accent); stroke-width: 1.5; r: 0; transition: r 0.2s; pointer-events: none; }
+.shape-group:hover .anc-center-vis { r: 6; }
+.anc-center-vis.active { fill: var(--accent); r: 8; }
+.anc-center-vis.pending-target { fill: rgba(222,38,38,0.25); stroke: var(--accent); stroke-dasharray: 3,2; r: 7; }
+
+.conn     { stroke: #777; stroke-width: 3; fill: none; pointer-events: none; }
+.conn.sel { stroke: var(--accent); stroke-width: 4; }
+.conn-hit { stroke: transparent; stroke-width: 20; fill: none; cursor: pointer; touch-action: none; }
+
+.ui-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; }
+.pa { pointer-events: auto; }
+.btn-icon {
+    width: 40px; height: 40px; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--inpb); border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; cursor: pointer; margin: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+.btn-icon.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.menu-toggle  { position: absolute; top: 0; right: 0; z-index: 101; }
+.fab-wrap {
+    position: absolute; bottom: 40px; right: 20px;
+    display: flex; flex-direction: column-reverse; align-items: center; gap: 15px; z-index: 90;
+}
+.fab-main {
+    width: 56px; height: 56px; background: var(--accent); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; color: #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.5); cursor: pointer;
+}
+.fab-list { display: flex; flex-direction: column; gap: 10px; opacity: 0; transform: translateY(20px); pointer-events: none; transition: .2s; }
+.fab-wrap.open .fab-list { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.fab-item {
+    display: flex; align-items: center; gap: 10px; background: var(--panel);
+    padding: 8px 16px; border-radius: 20px; border: 1px solid var(--inpb);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3); cursor: pointer; font-size: 14px;
+}
+.obj-fab {
+    position: absolute; bottom: 40px; left: 20px;
+    width: 48px; height: 48px; border-radius: 50%;
+    background: var(--panel); color: var(--fg); border: 1px solid var(--inpb);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; cursor: pointer; z-index: 90;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    transition: background .2s, color .2s, border-color .2s, box-shadow .2s;
+}
+.obj-fab.lit { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 18px rgba(222,38,38,.55); }
+.obj-panel {
+    position: absolute; bottom: 100px; left: 20px;
+    width: 230px; max-height: 340px; background: var(--panel);
+    border: 1px solid var(--inpb); border-radius: 8px; z-index: 120;
+    display: flex; flex-direction: column;
+    box-shadow: 0 6px 22px rgba(0,0,0,.65);
+    opacity: 0; pointer-events: none;
+    transition: opacity .18s, transform .18s; transform: translateY(8px);
+}
+.obj-panel.open { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.obj-hdr {
+    padding: 8px 12px; background: #181818;
+    border-bottom: 1px solid var(--inpb); border-radius: 8px 8px 0 0;
+    font-size: 11px; font-weight: 700; color: var(--accent);
+    letter-spacing: 1px; text-transform: uppercase;
+    cursor: move; display: flex; justify-content: space-between; align-items: center;
+    touch-action: none;
+}
+.obj-list { overflow-y: auto; flex: 1; padding: 4px; }
+.obj-item {
+    padding: 5px 8px; font-size: 12px; cursor: pointer;
+    border-radius: 4px; display: flex; align-items: center; gap: 5px;
+    white-space: nowrap; overflow: hidden; color: var(--fg);
+}
+.obj-item:hover { background: rgba(128,128,128,.12); }
+.obj-item.active { background: var(--accent); color: #fff; }
+.obj-item.hidden-node { opacity: .35; font-style: italic; }
+.tier-badge {
+    font-size: 9px; padding: 1px 4px; border-radius: 3px;
+    background: #2a2a2a; color: #888; flex-shrink: 0; font-weight: 700;
+}
+.obj-item.active .tier-badge { background: rgba(255,255,255,.2); color: #fff; }
+.obj-lbl { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.obj-cnt { font-size: 10px; color: #666; flex-shrink: 0; }
+.obj-item.active .obj-cnt { color: rgba(255,255,255,.5); }
+.obj-sect-hdr { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1px; padding: 8px 6px 3px; border-top: 1px solid #333; margin-top: 4px; }
+.drawer {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 300px;
+    background: var(--panel); border-left: 1px solid var(--inpb);
+    transform: translateX(100%); transition: transform .3s cubic-bezier(.2,.8,.2,1);
+    display: flex; flex-direction: column; z-index: 150;
+    box-shadow: -5px 0 20px rgba(0,0,0,.5);
+}
+.drawer.open { transform: translateX(0); }
+.drw-hdr { padding: 15px; border-bottom: 1px solid var(--inpb); display: flex; justify-content: space-between; align-items: center; }
+.drw-body { flex: 1; overflow-y: auto; padding: 15px; }
+.cg { margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 15px; }
+.lbl { display: block; font-size: 11px; text-transform: uppercase; color: #888; margin-bottom: 6px; }
+input[type="text"], input[type="number"], textarea, select {
+    width: 100%; background: var(--inp); border: 1px solid var(--inpb);
+    color: var(--fg); padding: 8px; border-radius: 4px; font-family: inherit; font-size: 13px;
+}
+input[type="color"] { width: 100%; height: 35px; border: none; background: none; cursor: pointer; }
+button {
+    width: 100%; padding: 10px; border: none; border-radius: 4px;
+    font-weight: 600; cursor: pointer; background: #333; color: #fff; margin-top: 5px;
+}
+button.red { background: var(--accent); }
+.brow { display: flex; gap: 8px; }
+.chkrow { display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; }
+.chkrow input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); flex-shrink: 0; }
+.chkrow span { font-size: 13px; }
+.snap-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 3px; vertical-align: middle; }
+.hier-info { font-size: 12px; color: #888; margin-bottom: 8px; line-height: 1.7; }
+.hier-info b { color: var(--accent); }
+.tabstrip { display: flex; gap: 6px; margin-bottom: 15px; }
+.tab-btn { flex: 1; padding: 8px; background: #252525; border: 1px solid #444; color: #aaa; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; text-align: center; }
+.tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.cfield-row { display:flex; gap:5px; margin-bottom:6px; align-items:center; }
+.cfield-row input { font-size: 12px; }
+.cfield-name { flex: 0 0 40%; color: #aaa; font-size: 11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.status-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: var(--sh);
+    background: var(--panel); border-top: 1px solid var(--inpb);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 15px; font-size: 11px; color: #888; z-index: 80;
+}
+.lightroom {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,.95); z-index: 200;
+    display: flex; flex-direction: column; padding: 20px;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+.lightroom.open { opacity: 1; pointer-events: auto; }
+.lr-hdr { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+#lr-title { color: var(--accent); margin: 0; }
+#lr-input { flex: 1; font-size: 13px; font-family: monospace; line-height: 1.5; padding: 10px; background: #111; color: #fff; border: 1px solid #333; resize: none; overflow: auto; white-space: pre; }
+</style>
+</head>
+<body class="light" oncontextmenu="return false;">
+
+<div class="ruler-corner"></div>
+<div class="ruler-h" id="ruler-top"></div>
+<div class="ruler-v" id="ruler-left"></div>
+
+<div id="viewport">
+    <div id="canvas-container">
+        <svg id="canvas"></svg>
+    </div>
+</div>
+
+<input type="color" id="terr-color-hidden" style="display:none;" oninput="app.setTerrColorFromPicker(this.value)">
+
+<div class="ui-layer">
+    <div class="menu-toggle btn-icon pa" onclick="app.toggleDrawer()">☰</div>
+
+    <div class="fab-wrap pa" id="fabWrap">
+        <div class="fab-main" onclick="app.toggleFab()">+</div>
+        <div class="fab-list">
+            <div class="fab-item" onclick="app.addShape()"><span>Add Root Node</span></div>
+            <div class="fab-item" onclick="app.openSchemaView()"><span>Live Schema</span></div>
+            <div class="fab-item" onclick="app.zoom(.1)"><span>Zoom In</span></div>
+            <div class="fab-item" onclick="app.zoom(-.1)"><span>Zoom Out</span></div>
+        </div>
+    </div>
+
+    <div class="obj-fab pa" id="obj-fab" onclick="app.toggleObjPanel()" title="Object List">≡</div>
+
+    <div class="obj-panel pa" id="obj-panel">
+        <div class="obj-hdr pa" id="obj-hdr">
+            <span>Objects</span>
+            <span id="obj-count" style="color:#666;font-weight:400;font-size:10px;letter-spacing:0;"></span>
+        </div>
+        <div class="obj-list" id="obj-list"></div>
+    </div>
+
+    <div class="drawer pa" id="drawer">
+        <div class="drw-hdr">
+            <h3 style="margin:0;color:var(--accent);">PROPERTIES</h3>
+            <div class="btn-icon" style="width:30px;height:30px;margin:0;" onclick="app.toggleDrawer()">✕</div>
+        </div>
+        <div class="drw-body">
+
+            <div class="cg">
+                <span class="lbl">Diagram Name</span>
+                <input type="text" id="inp-name" oninput="app.setName(this.value)" placeholder="Untitled">
+            </div>
+
+            <div class="cg">
+                <span class="lbl">Diagrams</span>
+                <select id="diagram-select" onchange="app.loadDiagramFromSelect(this.value)" style="margin-bottom:8px;">
+                    <option value="">Load a diagram…</option>
+                </select>
+                <div class="brow">
+                    <button onclick="app.newDiagramPrompt()" style="background:#252525;border:1px solid #555;">＋ New</button>
+                    <button onclick="app.saveDiagram()" style="background:#252525;border:1px solid #555;">💾 Save</button>
+                </div>
+            </div>
+
+            <div class="tabstrip">
+                <div class="tab-btn active" data-tab="props" onclick="app.switchTab('props')">Properties</div>
+                <div class="tab-btn" data-tab="terr" onclick="app.switchTab('terr')">Territory</div>
+            </div>
+
+            <div id="tab-props">
+                <div id="ctrl-single" style="display:none;">
+                    <div class="cg">
+                        <span class="lbl">Content</span>
+                        <input type="text" id="inp-label" oninput="app.upShape('label',this.value)" placeholder="Label">
+                        <button onclick="app.openTextEditor()">Edit Body Text</button>
+                    </div>
+                    <div class="cg">
+                        <span class="lbl">Hierarchy</span>
+                        <div class="hier-info" id="hier-info"></div>
+                        <button onclick="app.addChildNode()" style="background:#252525;border:1px solid #555;">＋ Add Child Node</button>
+                        <button id="btn-mkroot" onclick="app.makeRoot()" style="background:#252525;border:1px solid #555;display:none;">↑ Make Root Node</button>
+                    </div>
+                    <div class="cg">
+                        <span class="lbl">Style</span>
+                        <div style="display:flex;gap:5px;margin-bottom:8px;">
+                            <input type="color" id="inp-color" onchange="app.upShape('color',this.value)">
+                            <select id="inp-fc" onchange="app.upShape('fontColor',this.value)">
+                                <option value="auto">Auto Text</option>
+                                <option value="#ffffff">White</option>
+                                <option value="#000000">Black</option>
+                                <option value="#DE2626">Red</option>
+                            </select>
+                        </div>
+                        <div class="brow">
+                            <button id="btn-kind-rect" onclick="app.upShape('kind','rect')">▭ Rect</button>
+                            <button id="btn-kind-circle" onclick="app.upShape('kind','circle')">● Circle</button>
+                        </div>
+                    </div>
+                    <div class="cg">
+                        <span class="lbl">Size Class</span>
+                        <div class="brow">
+                            <button onclick="app.setSizeClass('small')">Small</button>
+                            <button onclick="app.setSizeClass('medium')">Medium</button>
+                        </div>
+                        <div class="brow" style="margin-top:5px;">
+                            <button onclick="app.setSizeClass('large')">Large</button>
+                            <button onclick="app.setSizeClass('huge')">Huge</button>
+                        </div>
+                    </div>
+                    <div class="cg">
+                        <span class="lbl">Custom Fields <span style="color:#555;">(this shape's own MFDB schema)</span></span>
+                        <div id="cfield-list"></div>
+                        <div class="brow" style="margin-top:6px;">
+                            <input type="text" id="cfield-new-name" placeholder="field name">
+                            <select id="cfield-new-type" style="flex:0 0 90px;">
+                                <option value="string">string</option>
+                                <option value="number">number</option>
+                                <option value="boolean">boolean</option>
+                            </select>
+                        </div>
+                        <button onclick="app.addCustomFieldFromUI()" style="background:#252525;border:1px solid #555;margin-top:6px;">＋ Add Custom Field</button>
+                    </div>
+                </div>
+
+                <div id="ctrl-conn" style="display:none;">
+                    <div class="cg">
+                        <span class="lbl">Line Flow</span>
+                        <select id="inp-flow" onchange="app.upConn('flow',this.value)">
+                            <option value="none">None</option>
+                            <option value="forward">Forward ➜</option>
+                            <option value="backward">Backward ⬅</option>
+                            <option value="bidirectional">Both ↔</option>
+                        </select>
+                    </div>
+                    <button class="red" onclick="app.deleteSel()">Delete Line</button>
+                </div>
+
+                <div id="ctrl-none" style="text-align:center;color:#888;margin-top:20px;font-size:13px;">No Selection</div>
+            </div><!-- /tab-props -->
+
+            <div id="tab-terr" style="display:none;">
+                <div class="cg">
+                    <span class="lbl">Add Territory</span>
+                    <div class="brow">
+                        <button onclick="app.addTerritory('rect')" style="background:#252525;border:1px solid #555;">▭ Square</button>
+                        <button onclick="app.addTerritory('circle')" style="background:#252525;border:1px solid #555;">● Circle</button>
+                    </div>
+                </div>
+                <div class="cg">
+                    <span class="lbl">Selected Territory</span>
+                    <div class="hier-info" id="terr-info">No territory selected. Tap a territory's border or name tag on the canvas, or create one above.</div>
+                    <input type="text" id="terr-label-input" oninput="app.setTerrLabel(this.value)" placeholder="Territory name" style="display:none;margin-top:6px;">
+                </div>
+                <div class="cg" style="font-size:11px;color:#777;line-height:1.6;border-bottom:none;">
+                    Tap a territory's colored border or its name tag to select it — tapping inside the fill won't select it, so shapes underneath stay reachable. Use the floating − / + buttons above the selected territory to resize, and the swatch to recolor.
+                </div>
+            </div><!-- /tab-terr -->
+
+            <div class="cg" style="margin-top:20px;">
+                <span class="lbl">System</span>
+                <label class="chkrow">
+                    <input type="checkbox" id="chk-snap" checked onchange="app.setSnap(this.checked)">
+                    <span><span class="snap-dot" id="snap-dot"></span>Grid Snap (50px)</span>
+                </label>
+                <button onclick="app.exportMfdb()">Export Diagram (.mfdb132.bejson)</button>
+                <input type="file" id="import-file-input" accept=".bejson,.json" style="display:none;" onchange="app.importMfdbFile(this.files[0])">
+                <button onclick="document.getElementById('import-file-input').click()">Import Diagram…</button>
+                <button onclick="app.toggleTheme()">Toggle Theme</button>
+                <button id="btn-del" class="red" style="display:none;" onclick="app.deleteSel()">Delete Selected</button>
+                <button onclick="app.showAbout()" style="background:#1a1a1a;border:1px solid #444;margin-top:10px;">About</button>
+            </div>
+        </div>
+    </div>
+</div><!-- /ui-layer -->
+
+<div class="status-bar">
+    <span id="st-l">Ready</span>
+    <span id="st-r">75%</span>
+</div>
+
+<div class="lightroom" id="lightroom">
+    <div class="lr-hdr">
+        <h2 id="lr-title">Edit</h2>
+        <button onclick="app.closeLightroom()" style="width:auto;padding:5px 15px;">Apply / Done</button>
+    </div>
+    <textarea id="lr-input" style="display:none;"></textarea>
+    <pre id="lr-view" style="display:none;"></pre>
+</div>
+
+<div id="about-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.85);z-index:300;justify-content:center;align-items:center;">
+    <div style="background:#1e1e1e;border:1px solid #444;padding:30px;max-width:340px;width:90%;text-align:center;">
+        <div style="color:#DE2626;font-size:22px;font-weight:800;margin-bottom:4px;">BEJSON Diagrammer</div>
+        <div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:4px;">Flask / MFDB Edition</div>
+        <div style="font-size:12px;color:#666;margin-bottom:20px;">Each shape is its own MFDB entity</div>
+        <div style="font-size:15px;margin-bottom:8px;"><strong>Elton Boehnen</strong></div>
+        <div style="margin-bottom:8px;"><a href="mailto:boehnenelton2024@gmail.com" style="color:#DE2626;text-decoration:none;">boehnenelton2024@gmail.com</a></div>
+        <div style="margin-bottom:8px;"><a href="https://github.com/boehnenelton" target="_blank" style="color:#DE2626;text-decoration:none;">github.com/boehnenelton</a></div>
+        <div style="margin-bottom:24px;"><a href="https://boehnenelton2024.pages.dev" target="_blank" style="color:#DE2626;text-decoration:none;">boehnenelton2024.pages.dev</a></div>
+        <button onclick="document.getElementById('about-modal').style.display='none'" style="background:#DE2626;color:#fff;width:100%;padding:10px;border:none;font-weight:700;cursor:pointer;">Close</button>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/diagrammer.js') }}"></script>
+</body>
+</html>

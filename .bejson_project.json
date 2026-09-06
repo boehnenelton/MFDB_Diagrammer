@@ -1,0 +1,63 @@
+{
+   "Format": "BEJSON",
+   "Format_Version": "104a",
+   "Format_Creator": "Elton Boehnen",
+   "Session_Id": "",
+   "Project_Name": "BEJSON_Diagrammer_Flask",
+   "Project_Modified_Date": "2026-08-12",
+   "Project_Description": "Flask + MFDB conversion of the BEJSON Diagrammer. Each shape placed on the board is its own MFDB entity file with its own field schema, linked back to the shared Board registry via a board_membership_fk foreign key.",
+   "Schema_Version": "2.0.0",
+   "Project_Version": "1.2.1",
+   "Package_Version": "102",
+   "Package_Date": "2026-08-12",
+   "Remote_Repo": "",
+   "Launcher": "",
+   "Known_Issues": "",
+   "User_Feedback": "",
+   "Project_GUID": "3f1e3848-a8de-4ba9-800b-ecbd232fcb56",
+   "Flags": [],
+   "Records_Type": [
+      "RootPackage"
+   ],
+   "Fields": [
+      {
+         "name": "change_log",
+         "type": "string"
+      },
+      {
+         "name": "date_changed",
+         "type": "string"
+      },
+      {
+         "name": "change_log",
+         "type": "string"
+      }
+   ],
+   "Values": [
+      [
+         "Converted static-HTML Diagrammer (v47) to a Flask application backed by MFDB. Every shape on the board now gets its own dedicated MFDB entity file (own Fields/schema, one row) instead of being a row in a shared shapes table. A shared Board entity holds only placement data (shape_cx, shape_cy, shape_size_class, shape_kind, shape_parent_fk, shape_collapsed) plus shape_entity_name pointing at each shape's private file. Each shape's own entity carries base content fields (shape_label, shape_color, shape_font_color, shape_text) plus a board_membership_fk foreign key back to Board.shape_id, plus any caller-added custom fields (real schema columns, added live via /api/shape/<id>/field). Connectors and Territories remain shared multi-row entities (conn_from_fk/conn_to_fk use _fk suffix per policy 6.4). lib/ contains the unmodified MFDB core libraries copied verbatim from libraries.zip (bejson_core, bejson_errors, bejson_validator, bejson_path_guard, bejson_env, mfdb_validator, mfdb_core) \u2014 none were altered. src/diagram_mfdb.py is the app-owned service layer wrapping the library's mfdb_core_* API; src/routes.py is the Flask blueprint. Full CRUD lifecycle (create/move/resize/custom-field/territory/delete, including cascading delete of a shape's private entity file and its dangling connectors) verified against a live Flask test client hitting real files on disk.",
+         "2026-07-06",
+         "Package pkg1 \u2014 first Flask/MFDB delivery. Internal file Versions all set to 1.0.0 (first version of each new file). Open question for lead: should the overall project be assigned a new landmark version number (e.g. v48) now that it's Flask+MFDB rather than a single HTML file, or does versioning restart per-file under the new structure? Also flagging: the old single-file BEJSON export/import buttons were removed since state now lives across multiple MFDB files \u2014 replaced with 'Export MFDB (.zip)' which zips the whole data/mfdb directory. No import-from-zip endpoint was built yet (not requested). AI Gemini diagram generator UI/key-management from v47 was not ported in this pass \u2014 flagging as deferred, not silently dropped."
+      ],
+      [
+         "Multi-diagram support: diagram_mfdb.py refactored from a single fixed MFDB_ROOT to a dynamic current-diagram pointer, so each diagram now lives in its own MFDB root under data/diagrams/<diagram_id>/, fully isolated from every other diagram. Added a persistent registry file, data/recent_diagrams.bejson (plain BEJSON 104 doc, not itself part of any diagram's MFDB), that survives server restarts and remembers every diagram ever created/opened (id, name, root path, last_opened) so the client's 'Load a diagram...' combo box has cross-session history. New endpoints: GET /api/diagrams (list + current), POST /api/diagrams/new, POST /api/diagrams/load. Frontend: added an always-visible 'Diagrams' block in the side drawer (above the Properties/Territory tabstrip, so it's reachable with nothing selected) with New/Save buttons and the recent-diagrams combo box. 'Save' doesn't do anything new functionally (every mutation already persists immediately) \u2014 it just re-confirms the diagram name and bumps its recency in the registry. Bug caught and fixed during testing: initial timestamp used 1-second resolution, so diagrams created in rapid succession (as in automated tests) could tie and sort out of recency order \u2014 switched to microsecond-precision timestamps and re-verified. Also fixed: territory floating +/- toolbar was anchored to the territory's top edge (territoryBox().y), which moves outward every time the territory grows, walking the buttons out from under the finger on repeated taps. Re-anchored to a fixed 90px offset from the territory's CENTER (t.cx/t.cy), which never changes on grow/shrink \u2014 only size does \u2014 so the buttons now stay planted through repeated presses.",
+         "2026-07-08",
+         "Package pkg2. Note: the fixed 90px center offset means the +/- toolbar can sit visually inside the fill for very large territories (anything with size > ~180px puts the buttons below the top edge) \u2014 it's still on top and tappable since it's drawn last, just flagging the visual in case that's not what's wanted. Didn't build an explicit 'rename/delete diagram from the list' control \u2014 Save currently only syncs the currently-open diagram's name; renaming a different (non-open) diagram from the combo box, or deleting old diagrams from the registry, wasn't requested and isn't there yet."
+      ],
+      [
+         "Standardized by FS_Indexer",
+         "2026-08-09",
+         "Schema migrated from 1.0.0 to 2.0.0 (bulk schema update)."
+      ],
+      [
+         "1.1.0 | 2026-08-12 | PKG101 library update + MFDB132 diagram export/import migration.",
+         "2026-08-12",
+         "PKG101 -- Library update pass + MFDB 1.31->1.32 diagram export/import migration. (1) lib/ updated to current Core library set: bejson_core 2.0.3->2.0.5, bejson_errors 2.3.0->2.4.0, bejson_path_guard 1.0.0->1.1.0, mfdb_core 2.0.1->2.3.0, mfdb_validator 2.1.0->2.2.0 (bejson_validator and bejson_env were already current at 2.0.2 / 2.1.2). Added lib_bejson_Core_bejson_chunking.py as a new lib/ dependency (required for MFDB-132 packaging; wasn't previously vendored). (2) New library family created: Lib_PY/Diagrams/ (lib_bejson_Diagrams_diagrams_core.py, lib_bejson_Diagrams_diagrams_validator.py, lib_bejson_Diagrams_bejson_errors.py, __init__.py). Core file owns the canonical Board/Connector/Territory/Shape MFDB entity schema (moved out of this app's diagram_mfdb.py, which now imports it) plus the single-file MFDB-132 export/import wrappers. Validator is built from scratch on top of Core's own MFDB-132 + full-database validation (Stage 1, unmodified/sourced, not reimplemented) and stacks diagram-specific structural rules on top (Stage 2: required entities/fields present, shape_parent_fk/conn_from_fk/conn_to_fk all resolve to a real Board.shape_id, shape_size_class warned if outside the known set). A document must clear Stage 1 before Stage 2 ever runs. (3) Removed the old diagram validators from Lib_PY/HTML/: lib_bejson_HTML_bejson_diagram_validator.py and lib_bejson_HTML_bejson_validator_diagram.py -- both superseded by the new Diagrams-family validator; confirmed via repo-wide grep that nothing else imported either file before deleting. lib_bejson_HTML_bejson_diagram_core.py and lib_bejson_HTML_bejson_diagram_html.py were left in place (HTML-export concern, not a diagram validator, and diagram_html.py depends on diagram_core.py -- out of the requested scope). (4) diagram_mfdb.py (1.1.0->1.2.0): export_mfdb_zip() removed, replaced with export_diagram_mfdb132() / import_diagram_mfdb132(), both routing through the new Diagrams-family validated write/read path -- a diagram now exports as ONE portable .mfdb132.bejson document instead of a .zip of the MFDB directory. Local BOARD_FIELDS / CONNECTOR_FIELDS / TERRITORY_FIELDS / SHAPE_BASE_FIELDS definitions removed in favor of importing them from the Diagrams family. (5) routes.py (1.0.0->1.1.0): GET /api/export now streams the single-file package (mimetype application/json, download name '<diagram-name>.mfdb132.bejson'); added POST /api/import (multipart file upload) opening the uploaded package as a new diagram, never overwriting an existing one. (6) Frontend: index.html (1.0.0->1.1.0) export button relabeled, Import Diagram... button + hidden file input added; diagrammer.js (1.0.0->1.1.0) added importMfdbFile(), wired through the existing applyDiagramPayload()/render()/loadRecentDiagramsList() refresh path used by New/Load. Verified: py_compile on every touched .py file; a live Flask test-client round trip (create 2 shapes + 1 connector + 1 territory -> export -> import into a fresh diagram -> all 4 rows present) plus negative-path tests (garbage upload, valid-JSON-but-not-a-package upload, a connector FK pointed at a nonexistent shape) all returned the expected pass/fail."
+      ],
+      [
+         "1.2.1 | 2026-08-12 | PKG102 bug fix: delete_shape() cascade for parent_fk/connector FKs.",
+         "2026-08-12",
+         "PKG102 -- Bug fix, found via the PKG101 export validator catching it for the first time. delete_shape() in diagram_mfdb.py never cascaded: deleting a shape left any of its children pointing at a shape_parent_fk row that no longer existed in Board, and left any Connector using the deleted shape as an endpoint pointing at nothing. The client already reparented children locally on delete (deleteSel() in diagrammer.js), so this was invisible in the UI -- the dangling server-side reference only surfaced on export/import, where the new Diagrams validator (added in PKG101) correctly refused to write it: \"shape_parent_fk '...' does not resolve to any Board.shape_id\". Fix: delete_shape() (1.2.0->1.2.1) now reparents former children to the deleted shape's own parent (skip a generation, matching the client's existing behavior) and removes any Connector row using the deleted shape as an endpoint. Verified: reproduced the exact failure (parent + child + a connector off the parent, delete the parent, export) -- export now returns 200 where it previously 400'd with this error; confirmed via /api/diagram afterward that the child's shape_parent_fk was correctly cleared and the dangling connector was gone."
+      ]
+   ]
+}
